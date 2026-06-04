@@ -5,8 +5,8 @@ description = "Workshop Module 1 — Build a Local Agent (Chief of Staff) with C
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "claude-agent-sdk>=0.1.51",   # cookbook baseline; uses output-styles / plan-mode / project+local settings
-    "python-dotenv>=1.1.1",
-    "ipykernel>=6.29",            # Jupyter kernel for the notebook
-    "boto3>=1.34",                # optional Bedrock access / credential check in the setup cell
+    "claude-agent-sdk==0.2.88",   # pinned; uses output-styles / plan-mode / project settings
+    "python-dotenv==1.2.2",
+    "ipykernel==7.2.0",           # Jupyter kernel for the notebook
+    "boto3==1.43.21",             # optional Bedrock access / credential check in the setup cell
 ]
