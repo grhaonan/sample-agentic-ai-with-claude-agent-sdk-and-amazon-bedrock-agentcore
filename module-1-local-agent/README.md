@@ -45,6 +45,17 @@ chief_of_staff_agent/
 
 ## Setup
 
+First, install **uv** if you don't already have it (`uv --version` to check):
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# or, with Homebrew
+brew install uv
+```
+
+Then, from this folder:
+
 ```bash
 cd module-1-local-agent
 
@@ -66,6 +77,29 @@ You can also run the packaged agent directly from the command line:
 uv run python -c "import anyio; from chief_of_staff_agent.agent import send_query; \
   anyio.run(lambda: send_query('What is our current runway?'))"
 ```
+
+## Testing
+
+A `pytest` suite in `tests/` keeps the notebook honest after edits. It has two tiers:
+
+```bash
+# FAST (no AWS credentials, ~seconds): notebook hygiene, agent config/skill/hook wiring,
+# the scripts, and the audit hooks.
+uv run --group test pytest
+
+# SLOW (needs AWS credentials, ~minutes + real Bedrock tokens): executes the entire
+# notebook end-to-end and asserts behavior (tools fired, report written, grounded facts).
+uv run --group test pytest -m slow
+```
+
+Notes:
+- The slow tier **auto-skips** when AWS credentials aren't available, so a bare `pytest` always runs clean.
+- Assertions are **structural/behavioral**, not exact text — agent output is non-deterministic.
+- The slow run **backs up and restores** `chief_of_staff_agent/audit/` and `output_reports/`, so it
+  leaves the working tree clean.
+
+Typical workflow after editing the notebook: run the fast tier for an instant regression check, then
+run `-m slow` when you want a full behavioral pass.
 
 ## Notes
 

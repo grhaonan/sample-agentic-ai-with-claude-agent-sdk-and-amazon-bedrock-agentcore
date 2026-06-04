@@ -43,6 +43,9 @@ uv.lock
 # Jupyter
 .ipynb_checkpoints
 
+# pytest
+.pytest_cache/
+
 # Project specific
 results/*
 */results/*
