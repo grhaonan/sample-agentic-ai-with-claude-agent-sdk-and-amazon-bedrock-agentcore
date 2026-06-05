@@ -26,7 +26,8 @@ wheels/
 
 # uv
 uv.lock
-.python-version
+# NOTE: .python-version is intentionally NOT ignored — each module commits one to
+# pin the local dev interpreter (3.11.14) so every participant's .venv matches.
 
 # Environment files
 .env
