@@ -15,8 +15,8 @@ to match it.
 |--------|---------|---------------------|
 | **1 — Local agent** | `query()` one-liner → `ClaudeSDKClient` + system prompt + `CLAUDE.md` + skills + multi-turn | ✅ **Built & tested** |
 | **2 — Deploy** | Wrap the agent in an AgentCore Runtime entrypoint, deploy (Container/ECR), invoke over HTTP | ✅ **Built & live-verified (us-west-2)** |
-| **3 — Memory** | AgentCore Memory (short-term events + long-term extraction) | ⬜ Not started |
-| **4 — Observability** | View agent traces in AgentCore Observability / CloudWatch (groundwork laid in M2) | ⬜ Not started |
+| **4 — Observability** | View agent traces in AgentCore Observability / CloudWatch GenAI dashboard | ✅ **Built & live-verified (us-west-2)** |
+| **3 — Memory** | AgentCore Memory (short-term events + long-term extraction) | ⬜ Not started (next) |
 | **Advanced (optional)** | Track 1: Text-to-SQL on Athena · Track 2: Follow-up questions | 📦 Archived (see below) |
 
 The running example for Modules 1–4 is the **Chief of Staff agent** (fictional startup "TechStart Inc" —
@@ -46,6 +46,11 @@ AWS credentials + Amazon Bedrock model access (no Athena/S3).
 │   ├── agentcore/                  # @aws/agentcore project (agentcore.json, CDK, aws-targets.example.json)
 │   ├── tests/                      # fast (reuse/config/static) + slow (live deploy) tiers
 │   ├── pyproject.toml  README.md  .env.example
+├── module-4-observability/         # ✅ Module 4 — trace the deployed agent in CloudWatch
+│   ├── module-4-observability.ipynb # guided: Transaction Search → deploy → Tracing toggle → invoke → view
+│   ├── chief_of_staff_agent/        # SAME bundle as M2; Dockerfile CMD wraps `opentelemetry-instrument`
+│   ├── scripts/enable_transaction_search.py  # idempotent account-level setup
+│   ├── agentcore/  tests/  pyproject.toml  README.md  .env.example
 ├── advanced/text-to-sql-athena/   # 📦 the ORIGINAL BI/Student-Analytics workshop, archived as-is
 └── CLAUDE.md  LICENSE  CONTRIBUTING.md  CODE_OF_CONDUCT.md  .gitignore
 ```
@@ -84,10 +89,24 @@ AWS credentials + Amazon Bedrock model access (no Athena/S3).
   4)** — both are config additions, not rework.
 - **Account ID hygiene:** `agentcore/aws-targets.json` (real 12-digit account) is **gitignored**; commit
   only `aws-targets.example.json`. Participants copy + fill it in.
-- **Observability (Module 4) groundwork:** `enableOtel: true` + `aws-opentelemetry-distro` in the image
-  means traces already export to CloudWatch. Module 4 should use the **SDK-native OTEL** path
-  (verified: `claude-agent-sdk` 0.2.88 propagates W3C trace context to its CLI) — do NOT port the
-  archived heavy manual `openinference`/hand-span approach.
+### Module 4 / observability decisions (live-verified on us-west-2)
+Observability adds **zero agent code** (same bundle as M2; drift-guard test enforces it). The archived
+745-line manual `openinference`/hand-span approach is **obsolete** — not used. Three switches make a
+trace appear in the CloudWatch GenAI dashboard, and **all three are required** (proven by trial):
+1. **Account-level CloudWatch Transaction Search** — one-time; makes spans searchable in `/aws/spans`.
+   Automated by `scripts/enable_transaction_search.py` (idempotent).
+2. **Container EMITS spans** — the Dockerfile `CMD` must run under **`opentelemetry-instrument`**
+   (from `aws-opentelemetry-distro`) + ADOT env (`AGENT_OBSERVABILITY_ENABLED=true`, `OTEL_*`).
+   ⚠️ **Gotcha:** for a BYO-Container with a custom CMD the runtime does **NOT** auto-inject the OTEL
+   wrapper — we add it ourselves. (M2's Dockerfile comment claiming auto-injection was wrong.)
+3. **Per-runtime Tracing toggle DELIVERS spans** — a **console** action (AgentCore → Agent Runtime →
+   agent → Tracing → Edit → Enable). **No public CLI/`agentcore.json` field** for runtime resources
+   (the SDK delivery API only covers memory/gateway). So Module 4's notebook teaches it as a one-time
+   manual toggle step. Without it, the agent emits spans but they never reach CloudWatch.
+- **End-to-end proof:** after all three + `agentcore invoke --session-id <33+ chars>`, a `POST /invocations`
+  span with the session id landed in `/aws/spans` within ~2 min. (Session ids must be **≥33 chars**.)
+- **Other gotcha:** pin `aws-cdk-lib` **exactly** in `agentcore/cdk/package.json` — a floating `^` let it
+  resolve to a lib newer than the bundled `aws-cdk` CLI could read (CDK synth "schema version" error).
 
 ## Testing
 
@@ -102,12 +121,16 @@ uv run --group test pytest -m slow    # SLOW: executes the notebook on Bedrock (
 
 # Module 2
 uv run --group test pytest            # FAST: reuse/drift-guard + config + Dockerfile + notebook (no creds/Docker)
-uv run --group test pytest -m slow    # SLOW: real agentcore deploy+invoke round-trip (creds + Docker)
+uv run --group test pytest -m slow    # SLOW: real agentcore deploy+invoke round-trip (creds)
+
+# Module 4
+uv run --group test pytest            # FAST: drift-guard + enableOtel/OTEL-wrapper config + TS helper + notebook
+uv run --group test pytest -m slow    # SLOW: enable TS → deploy → invoke → assert OTEL active; span check best-effort
 ```
 
-Verified green: Module 1 fast 33 + slow 7 (live Bedrock); Module 2 **fast 16** + **live deploy/invoke
-verified** on us-west-2 (Container build via cloud CodeBuild; invoke had no `Permission denied` — the
-CodeZip bundled-binary bug is fixed by the Container path).
+Verified green: Module 1 fast 33 + slow 7 (live Bedrock); Module 2 **fast 16** + live deploy/invoke on
+us-west-2; Module 4 **fast 15** + **live-verified end-to-end** on us-west-2 (a `POST /invocations` span
+with our session id reached `/aws/spans` after enabling the runtime Tracing toggle).
 
 > **Deploy note:** local Docker is NOT needed — the `@aws/agentcore` Container build runs in the cloud
 > (CodeBuild, ARM64). `agentcore deploy` reads the target from `agentcore/aws-targets.json` (gitignored);
@@ -115,10 +138,11 @@ CodeZip bundled-binary bug is fixed by the Container path).
 
 ## Current state (branch `refactoring`)
 
-Done: archived old BI code → Module 1 (notebook + agent + skill + tests) → Module 2 (refactored
-`build_agent_options()`, thin AgentCore entrypoint, Container Dockerfile, `agentcore.json`, notebook,
-tests) → **Module 2 live-verified end-to-end on AWS** (deploy + invoke + teardown). All work is
-uncommitted, in the working tree.
+Done: archived old BI code → Module 1 → Module 2 (deploy, live-verified) → **Module 4 (observability),
+live-verified end-to-end on AWS** (Transaction Search + OTEL-wrapped container + runtime Tracing toggle →
+trace in `/aws/spans`). We built Module 4 before Module 3 because observability only depends on the
+deployed agent, and the memory design wasn't finalized. All Module 4 work is uncommitted, in the working
+tree.
 
 **Next up:** Module 3 — AgentCore Memory (give the deployed, currently-stateless agent cross-session
-memory).
+memory). `agentcore.json` already has a first-class `memories[]` block for this.
