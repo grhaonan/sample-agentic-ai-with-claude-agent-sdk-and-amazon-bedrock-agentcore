@@ -75,7 +75,9 @@ def test_setting_sources_present_for_filesystem_features(nb):
 def test_teaching_content_present(all_markdown):
     """The scenario/architecture narrative and the query-vs-client comparison survived edits."""
     assert "The scenario: a Chief of Staff" in all_markdown
-    assert "```mermaid" in all_markdown
+    # Architecture is shown as a rendered PNG (renders in Code Editor / JupyterLab / GitHub alike;
+    # raw ```mermaid only renders in some viewers).
+    assert "images/architecture.png" in all_markdown
     assert "`query()` vs. `ClaudeSDKClient`" in all_markdown
     assert "Interrupts" in all_markdown  # a distinctive row from the comparison table
 

@@ -8,6 +8,10 @@ The running example is a **Chief of Staff** agent for a fictional 50-person star
 You'll ask it about runway, burn rate, and hiring, and watch it grow from a one-line prototype into a
 context-rich assistant.
 
+> **Credit:** this agent is adapted from Anthropic's
+> [claude-cookbooks `chief_of_staff_agent` example](https://github.com/anthropics/claude-cookbooks/tree/main/claude_agent_sdk/chief_of_staff_agent)
+> — we reuse that public example and adapt it to run on Amazon Bedrock.
+
 ## What you'll build (in one notebook)
 
 `module-1-local-agent.ipynb`, in three parts:
@@ -45,29 +49,20 @@ chief_of_staff_agent/
 
 ## Setup
 
-First, install **uv** if you don't already have it (`uv --version` to check):
-
-```bash
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# or, with Homebrew
-brew install uv
-```
-
-Then, from this folder:
+> In the workshop, environment setup (installing **uv**, syncing dependencies, registering the
+> Jupyter kernel, and AWS credentials) is handled on the **Workshop Studio** page. The steps below
+> are the equivalent if you're running locally.
 
 ```bash
 cd module-1-local-agent
-
-# Install dependencies into a local .venv
-uv sync
-
-# Configure environment (Bedrock)
-cp .env.example .env        # edit AWS_REGION / model IDs if needed
-
-# Register the kernel, then open the notebook
+uv sync                                                   # install pinned deps into .venv
+cp .env.example .env                                      # the notebook also does this for you
 uv run python -m ipykernel install --user --name module-1-local-agent
 ```
+
+> **Code Editor tip:** open the **module folder** as your workspace
+> (`File > Open Folder > module-1-local-agent/`), not the repo root — so the module's `.venv` is at
+> the workspace root and the editor auto-detects the interpreter / **module-1-local-agent** kernel.
 
 Open `module-1-local-agent.ipynb` and select the **module-1-local-agent** kernel.
 
