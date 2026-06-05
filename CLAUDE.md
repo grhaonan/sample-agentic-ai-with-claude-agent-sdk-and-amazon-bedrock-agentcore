@@ -141,8 +141,8 @@ with our session id reached `/aws/spans` after enabling the runtime Tracing togg
 Done: archived old BI code → Module 1 → Module 2 (deploy, live-verified) → **Module 4 (observability),
 live-verified end-to-end on AWS** (Transaction Search + OTEL-wrapped container + runtime Tracing toggle →
 trace in `/aws/spans`). We built Module 4 before Module 3 because observability only depends on the
-deployed agent, and the memory design wasn't finalized. All Module 4 work is uncommitted, in the working
-tree.
+deployed agent, and the memory design wasn't finalized. Modules 1, 2, and 4 are all committed and pushed
+to `origin/refactoring`; the working tree is clean.
 
 **Next up:** Module 3 — AgentCore Memory (give the deployed, currently-stateless agent cross-session
 memory). `agentcore.json` already has a first-class `memories[]` block for this.
