@@ -13,7 +13,7 @@
       "build": "Container",
       "entrypoint": "agent_agentcore.py",
       "codeLocation": "chief_of_staff_agent/",
-      "runtimeVersion": "PYTHON_3_14",
+      "runtimeVersion": "PYTHON_3_11",
       "networkMode": "PUBLIC",
       "protocol": "HTTP",
       "instrumentation": { "enableOtel": true },

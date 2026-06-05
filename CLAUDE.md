@@ -211,11 +211,21 @@ Modules 1, 2, 4 are committed/pushed to `origin/refactoring`.
 `system_prompt_suffix` change to `module-{1,2,4}/.../agent.py`, and this CLAUDE.md update. **Not yet
 committed** — Module 3 is complete and live-verified; ready to commit when you are.
 
-**Open items / repo-wide quirks surfaced (NOT Module-3-specific — flag for a cleanup pass):**
-1. **`Dockerfile` is globally gitignored** (`.gitignore:53`), so per-module bundle Dockerfiles (M2/M3/M4)
-   are on-disk-only — a fresh clone lacks them and `test_dockerfile_*` would fail there.
-2. **CDK project isn't reproducible from git:** `agentcore/cdk/lib/cdk-stack.ts` is gitignored
-   (`.gitignore:17` `lib/`) and `node_modules` is gitignored — so `agentcore deploy` (`tsc` build) fails on
-   a fresh checkout until you restore `lib/cdk-stack.ts` and `npm ci`. Symptom: `sh: tsc: command not found`.
-   Both 1 & 2 mean the modules deploy locally but a clean clone can't; worth a deliberate fix
-   (commit the sources, or add a documented setup step).
+### Python version is pinned to 3.11 everywhere (parity)
+Local dev, the deployed container, and the (cosmetic-for-Container) runtime config all say 3.11:
+- **Local dev:** committed `.python-version` = `3.11.14` per MODULE folder (uv's native pin; `requires-python`
+  is only a range and let the venvs drift to 3.12). `3.11.15` doesn't exist — 3.11.14 is the newest 3.11 build.
+- **Deployed container:** bundle `Dockerfile` `FROM python:3.11-slim-bookworm` — this is the ONLY thing that
+  sets the deployed Python for a Container build. **Live-verified on us-west-2** (M2 deploy+invoke on the 3.11
+  image passed, then torn down).
+- **`agentcore.json` `runtimeVersion: PYTHON_3_11`** — set for consistency, but **the CDK IGNORES it for
+  Container builds** (verified in `AgentCoreRuntime.js`: `runtimeVersion` only feeds the CodeZip
+  `codeConfiguration.runtime`; Container uses just `containerConfiguration.containerUri`). The Dockerfile wins.
+- Bundles keep `requires-python = ">=3.11"` (a floor, fine).
+
+**Open items / repo-wide quirks (one resolved this session):**
+1. ✅ **RESOLVED — `Dockerfile` un-ignored & committed.** Removed the global `Dockerfile` ignore so the three
+   bundle Dockerfiles (now `python:3.11`) are tracked. A fresh clone now has them; `test_dockerfile_*` passes.
+2. **Still open — CDK project isn't reproducible from git:** `agentcore/cdk/lib/cdk-stack.ts` is gitignored
+   (`.gitignore` `lib/`) and `node_modules` is gitignored — so `agentcore deploy` (`tsc` build) fails on a fresh
+   checkout until you restore `lib/cdk-stack.ts` and `npm ci`. Symptom: `sh: tsc: command not found`.

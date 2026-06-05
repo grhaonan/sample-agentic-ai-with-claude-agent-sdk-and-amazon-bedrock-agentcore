@@ -51,6 +51,8 @@ uv.lock
 results/*
 */results/*
 temp/*
-Dockerfile
+# NOTE: the per-module bundle Dockerfile is intentionally NOT ignored — it is the
+# only thing that sets the deployed Python (the FROM image), so it must be committed
+# for the deploy to be reproducible from a clean clone.
 .bedrock_agentcore.yaml
 dev_server.log
