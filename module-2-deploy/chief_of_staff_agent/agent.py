@@ -38,6 +38,7 @@ def build_agent_options(
     permission_mode: Literal["default", "plan", "acceptEdits"] = "default",
     output_style: str | None = None,
     extra_tools: list[str] | None = None,
+    system_prompt_suffix: str | None = None,
     **overrides: Any,
 ) -> ClaudeAgentOptions:
     """Build the agent's ClaudeAgentOptions — the single source of truth.
@@ -47,6 +48,9 @@ def build_agent_options(
     place. Later modules override defaults rather than forking:
 
     - ``extra_tools``: append tools (e.g. Module 3 memory tools).
+    - ``system_prompt_suffix``: append text to the system prompt (e.g. Module 3
+      injects recalled memory here) without replacing the canonical prompt — keeps
+      prompt assembly inside this single source of truth.
     - ``**overrides``: override any ClaudeAgentOptions field (e.g. ``max_turns=50``).
 
     No ``model=`` is set — this workshop runs on Amazon Bedrock and the model comes
@@ -56,9 +60,11 @@ def build_agent_options(
     if extra_tools:
         tools = tools + extra_tools
 
+    system_prompt = SYSTEM_PROMPT + (system_prompt_suffix or "")
+
     defaults: dict[str, Any] = dict(
         allowed_tools=tools,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=system_prompt,
         continue_conversation=continue_conversation,
         permission_mode=permission_mode,
         cwd=AGENT_DIR,

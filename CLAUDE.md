@@ -15,8 +15,8 @@ to match it.
 |--------|---------|---------------------|
 | **1 — Local agent** | `query()` one-liner → `ClaudeSDKClient` + system prompt + `CLAUDE.md` + skills + multi-turn | ✅ **Built & tested** |
 | **2 — Deploy** | Wrap the agent in an AgentCore Runtime entrypoint, deploy (Container/ECR), invoke over HTTP | ✅ **Built & live-verified (us-west-2)** |
+| **3 — Memory** | AgentCore Memory (short-term events + long-term extraction); single-tenant | ✅ **Built & live-verified (us-west-2): deploy + cross-session recall round-trip** |
 | **4 — Observability** | View agent traces in AgentCore Observability / CloudWatch GenAI dashboard | ✅ **Built & live-verified (us-west-2)** |
-| **3 — Memory** | AgentCore Memory (short-term events + long-term extraction) | ⬜ Not started (next) |
 | **Advanced (optional)** | Track 1: Text-to-SQL on Athena · Track 2: Follow-up questions | 📦 Archived (see below) |
 
 The running example for Modules 1–4 is the **Chief of Staff agent** (fictional startup "TechStart Inc" —
@@ -46,6 +46,14 @@ AWS credentials + Amazon Bedrock model access (no Athena/S3).
 │   ├── agentcore/                  # @aws/agentcore project (agentcore.json, CDK, aws-targets.example.json)
 │   ├── tests/                      # fast (reuse/config/static) + slow (live deploy) tiers
 │   ├── pyproject.toml  README.md  .env.example
+├── module-3-memory/                # ✅ Module 3 — give the SAME agent cross-session memory (single-tenant)
+│   ├── module-3-memory.ipynb        # guided: deploy → session A (state fact) → session B (recall) → A/B → inspect LTM → cleanup
+│   ├── chief_of_staff_agent/        # M2 bundle + memory/session.py + memory-aware agent_agentcore.py
+│   │   ├── memory/session.py        # get_memory(): retrieve_context() (STM list_events + LTM retrieve) + record_turn() (create_event)
+│   │   └── agent_agentcore.py       # @app.entrypoint invoke(payload, context) — recall → run → record; {"memory":false} A/B toggle
+│   ├── agentcore/                   # agentcore.json with memories[] (SEMANTIC facts + USER_PREFERENCE prefs)
+│   ├── SPIKE_NOTES.md               # Phase-0 live findings (IAM auto-wired, LTM latency, verified boto3 shapes)
+│   ├── tests/  pyproject.toml  README.md  .env.example
 ├── module-4-observability/         # ✅ Module 4 — trace the deployed agent in CloudWatch
 │   ├── module-4-observability.ipynb # guided: Transaction Search → deploy → Tracing toggle → invoke → view
 │   ├── chief_of_staff_agent/        # SAME bundle as M2; Dockerfile CMD wraps `opentelemetry-instrument`
@@ -107,6 +115,53 @@ trace appear in the CloudWatch GenAI dashboard, and **all three are required** (
   span with the session id landed in `/aws/spans` within ~2 min. (Session ids must be **≥33 chars**.)
 - **Other gotcha:** pin `aws-cdk-lib` **exactly** in `agentcore/cdk/package.json` — a floating `^` let it
   resolve to a lib newer than the bundled `aws-cdk` CLI could read (CDK synth "schema version" error).
+### Module 3 / memory decisions (Phase-0 spike-verified on us-west-2; see `module-3-memory/SPIKE_NOTES.md`)
+Chosen approach = **AgentCore Memory** (over the Runtime persistent filesystem — verified per-session/
+ephemeral, the opposite of the mandate — and over a DIY SessionStore/vector store — re-implements a
+managed service). **Single-tenant** (one fixed `actor_id = "techstart-cos"`); multi-tenant is documented
+as a follow-on, not built.
+- **`agent.py` gained one additive param: `system_prompt_suffix`** (backported into Module 1 and re-synced
+  to ALL bundle copies — the byte-identical drift-guard still passes). Memory is injected via
+  `build_agent_options(system_prompt_suffix=recalled_text)`, NOT a forked `system_prompt=` — which also
+  keeps `test_reuse.py`'s "no `system_prompt=` in the entrypoint" guard green. ⚠️ This means Module 1's
+  `agent.py` is **no longer the same bytes as before this module** — all four copies changed together.
+- **Entrypoint is now `invoke(payload, context)` (2 args).** The runtime only delivers the request context
+  (→ `context.session_id`) when the 2nd param is literally named `context` (verified in
+  `bedrock_agentcore/runtime/app.py::_takes_context`). `memory/session.py` is the only net-new agent code.
+- **IAM is AUTO-WIRED — no manual policy.** `agentcore deploy` with a populated `memories[]` grants the
+  runtime role the memory data-plane actions (CreateEvent/ListEvents/ListSessions/RetrieveMemoryRecords/…)
+  and injects the env var **`MEMORY_<UPPERCASE_NAME>_ID`** (for `CosMemory` → `MEMORY_COSMEMORY_ID`).
+  Verified by reading the installed `@aws/agentcore-cdk` (`AgentCoreApplication.wireMemoriesToAgents()` →
+  `AgentCoreMemory.grant()`).
+- **Two layers, and the latency gotcha that shapes the demo:** short-term events (`create_event`/
+  `list_events`) are **immediate**; long-term extraction (SEMANTIC facts + USER_PREFERENCE) is
+  **async** (measured: prefs ~64s, facts ~80s after a write; memory ~150s to `ACTIVE`). So **live
+  cross-session recall rides on short-term `list_events`** of the actor's prior sessions; LTM is the
+  "learned over time" inspect beat. `retrieve_context()` queries both.
+- **Verified boto3 shapes (NOT the guide's pseudocode):** `create_event` payload key is **`conversational`**
+  (not `conversationalMessage`), `content` is a struct `{"text": ...}`, `eventTimestamp` is **required**,
+  role enum is **`USER`/`ASSISTANT`**. `retrieve_memory_records` takes a **top-level `namespace`** +
+  `searchCriteria={"searchQuery","topK"}`. `list_events` **requires `sessionId`**; `list_sessions` returns
+  `sessionSummaries[].{sessionId,actorId,createdAt}`. USER_PREFERENCE records come back JSON-wrapped
+  (`{"context": "..."}`); SEMANTIC facts are plain text — `_unwrap_record_text` handles both.
+- **`eventExpiryDuration` min is 7** (installed CDK zod), not the 3 the older guide text claims; we use 7.
+- **Graceful degradation:** unset `MEMORY_COSMEMORY_ID` (e.g. local `agentcore dev`, where Memory is
+  unavailable) or any data-plane error → `_NullMemory`, agent runs stateless (never crashes).
+- **Demo honesty:** the recalled value (`$42.5M`) is **invented in-session** because the bundle's
+  `CLAUDE.md` hardcodes a **$30M** Series B (line 40) — reusing $30M would prove nothing. Proof is a
+  same-deployment **A/B** (`{"memory": false}`), not a comparison against the M2 deployment.
+- **LIVE-VERIFIED (us-west-2):** the slow test (`test_deploy_live.py`) passed end-to-end in ~11 min —
+  deploy provisioned runtime + CosMemory, session A wrote the `$42.5M` fact, **session B recalled it**
+  (no AccessDenied → IAM auto-wiring confirmed live), then teardown destroyed both resources (0 memories /
+  0 runtimes after) and restored the config snapshot.
+- **CDK reproducibility gotcha (pre-existing, repo-wide):** `agentcore deploy` runs `npm run build` (`tsc`),
+  which needs the CDK project's `node_modules` AND `lib/cdk-stack.ts`. BOTH are **gitignored**
+  (`cdk/.gitignore` ignores `node_modules`; root `.gitignore:17` ignores `lib/`), so a fresh git checkout
+  of any module's `agentcore/cdk/` can't deploy until you `npm ci` there and restore `lib/cdk-stack.ts`.
+  M2/M4 only deploy because their copies exist locally from prior runs. For M3 I had to `npm ci` and copy
+  `lib/cdk-stack.ts` from M2. **Flag for a repo-wide fix** (commit `lib/cdk-stack.ts`, or regenerate it +
+  `npm ci` as a documented setup step). The deploy also fails fast with `sh: tsc: command not found` when
+  `node_modules` is absent — a clear signal of this.
 
 ## Testing
 
@@ -123,14 +178,21 @@ uv run --group test pytest -m slow    # SLOW: executes the notebook on Bedrock (
 uv run --group test pytest            # FAST: reuse/drift-guard + config + Dockerfile + notebook (no creds/Docker)
 uv run --group test pytest -m slow    # SLOW: real agentcore deploy+invoke round-trip (creds)
 
+# Module 3
+uv run --group test pytest            # FAST: reuse/drift-guard + suffix/context + memory-helper logic (fake client) + memories[] config + notebook
+uv run --group test pytest -m slow    # SLOW: deploy → session A writes → session B recalls (STM) → assert no AccessDenied
+
 # Module 4
 uv run --group test pytest            # FAST: drift-guard + enableOtel/OTEL-wrapper config + TS helper + notebook
 uv run --group test pytest -m slow    # SLOW: enable TS → deploy → invoke → assert OTEL active; span check best-effort
 ```
 
 Verified green: Module 1 fast 33 + slow 7 (live Bedrock); Module 2 **fast 16** + live deploy/invoke on
-us-west-2; Module 4 **fast 15** + **live-verified end-to-end** on us-west-2 (a `POST /invocations` span
-with our session id reached `/aws/spans` after enabling the runtime Tracing toggle).
+us-west-2; Module 3 **fast 31** (reuse 9 + config 7 + memory-helper 9 + notebook 6) + **slow 2 live-verified
+on us-west-2** (deploy runtime+CosMemory → session A writes `$42.5M` → session B recalls it, no AccessDenied →
+IAM auto-wiring confirmed → teardown destroyed both; ~11 min); Module 4 **fast 15** + **live-verified
+end-to-end** on us-west-2 (a `POST /invocations` span with our session id reached `/aws/spans` after
+enabling the runtime Tracing toggle).
 
 > **Deploy note:** local Docker is NOT needed — the `@aws/agentcore` Container build runs in the cloud
 > (CodeBuild, ARM64). `agentcore deploy` reads the target from `agentcore/aws-targets.json` (gitignored);
@@ -138,11 +200,22 @@ with our session id reached `/aws/spans` after enabling the runtime Tracing togg
 
 ## Current state (branch `refactoring`)
 
-Done: archived old BI code → Module 1 → Module 2 (deploy, live-verified) → **Module 4 (observability),
-live-verified end-to-end on AWS** (Transaction Search + OTEL-wrapped container + runtime Tracing toggle →
-trace in `/aws/spans`). We built Module 4 before Module 3 because observability only depends on the
-deployed agent, and the memory design wasn't finalized. Modules 1, 2, and 4 are all committed and pushed
-to `origin/refactoring`; the working tree is clean.
+Done: archived old BI code → Module 1 → Module 2 (deploy, live-verified) → Module 4 (observability,
+live-verified) → **Module 3 (memory), built + fast-tested (31 green) + LIVE-VERIFIED end-to-end on
+us-west-2** (deploy + cross-session recall round-trip; see Module 3 decisions above). Module 3 is
+**single-tenant** and reuses the M2 bundle + the new `memory/session.py`; the `system_prompt_suffix`
+backport touched Module 1's `agent.py` and was re-synced to all bundle copies (drift-guard still green).
+Modules 1, 2, 4 are committed/pushed to `origin/refactoring`.
 
-**Next up:** Module 3 — AgentCore Memory (give the deployed, currently-stateless agent cross-session
-memory). `agentcore.json` already has a first-class `memories[]` block for this.
+**Uncommitted in the working tree (this session):** Module 3 (new `module-3-memory/`), the
+`system_prompt_suffix` change to `module-{1,2,4}/.../agent.py`, and this CLAUDE.md update. **Not yet
+committed** — Module 3 is complete and live-verified; ready to commit when you are.
+
+**Open items / repo-wide quirks surfaced (NOT Module-3-specific — flag for a cleanup pass):**
+1. **`Dockerfile` is globally gitignored** (`.gitignore:53`), so per-module bundle Dockerfiles (M2/M3/M4)
+   are on-disk-only — a fresh clone lacks them and `test_dockerfile_*` would fail there.
+2. **CDK project isn't reproducible from git:** `agentcore/cdk/lib/cdk-stack.ts` is gitignored
+   (`.gitignore:17` `lib/`) and `node_modules` is gitignored — so `agentcore deploy` (`tsc` build) fails on
+   a fresh checkout until you restore `lib/cdk-stack.ts` and `npm ci`. Symptom: `sh: tsc: command not found`.
+   Both 1 & 2 mean the modules deploy locally but a clean clone can't; worth a deliberate fix
+   (commit the sources, or add a documented setup step).
