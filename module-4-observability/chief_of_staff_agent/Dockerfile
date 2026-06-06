@@ -7,7 +7,7 @@
 # and permissions.
 #
 # AgentCore Runtime requires linux/arm64. The base image must match.
-FROM --platform=linux/arm64 public.ecr.aws/docker/library/python:3.11-slim-bookworm
+FROM --platform=linux/arm64 public.ecr.aws/docker/library/python:3.11-slim-trixie
 
 WORKDIR /app
 
@@ -16,6 +16,8 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     # Use Amazon Bedrock as the model provider (model id comes from ANTHROPIC_MODEL env).
     CLAUDE_CODE_USE_BEDROCK=1 \
+    CLAUDE_CODE_ENABLE_TELEMETRY=1 \
+     CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1 \
     # Observability (Module 4): activate the ADOT pipeline so the runtime exports OTEL
     # traces/spans to CloudWatch. For a BYO container with our own CMD, we own the launch
     # command, so WE wrap it with `opentelemetry-instrument` (the runtime only auto-injects
@@ -24,7 +26,9 @@ ENV PYTHONUNBUFFERED=1 \
     OTEL_PYTHON_DISTRO=aws_distro \
     OTEL_PYTHON_CONFIGURATOR=aws_configurator \
     OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \
-    OTEL_TRACES_EXPORTER=otlp
+    OTEL_TRACES_EXPORTER=otlp \
+    OTEL_METRICS_EXPORTER=otlp \
+    OTEL_LOGS_EXPORTER=otlp
 
 # Node.js: the Claude Agent SDK's CLI resolution falls back to a Node-based
 # `claude` if the bundled binary isn't usable. Having Node present makes the

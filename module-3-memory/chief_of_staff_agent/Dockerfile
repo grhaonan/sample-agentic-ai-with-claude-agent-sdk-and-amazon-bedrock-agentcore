@@ -7,7 +7,7 @@
 # and permissions.
 #
 # AgentCore Runtime requires linux/arm64. The base image must match.
-FROM --platform=linux/arm64 public.ecr.aws/docker/library/python:3.11-slim-bookworm
+FROM --platform=linux/arm64 public.ecr.aws/docker/library/python:3.11-slim-trixie
 
 WORKDIR /app
 

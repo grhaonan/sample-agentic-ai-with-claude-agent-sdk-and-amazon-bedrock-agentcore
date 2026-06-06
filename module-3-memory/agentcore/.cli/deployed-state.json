@@ -1,3 +1,23 @@
 {
-  "targets": {}
+  "targets": {
+    "default": {
+      "resources": {
+        "runtimes": {
+          "cos": {
+            "runtimeId": "cosmemory_cos-PN58aI5sXU",
+            "runtimeArn": "arn:aws:bedrock-agentcore:us-west-2:361691913159:runtime/cosmemory_cos-PN58aI5sXU",
+            "roleArn": "arn:aws:iam::361691913159:role/AgentCore-cosmemory-defau-ApplicationAgentCosRuntim-AsBtzng3eGTm"
+          }
+        },
+        "memories": {
+          "CosMemory": {
+            "memoryId": "cosmemory_CosMemory-xK1cg1E4VJ",
+            "memoryArn": "arn:aws:bedrock-agentcore:us-west-2:361691913159:memory/cosmemory_CosMemory-xK1cg1E4VJ"
+          }
+        },
+        "stackName": "AgentCore-cosmemory-default",
+        "deployHash": "b563b304d9af0bfb"
+      }
+    }
+  }
 }

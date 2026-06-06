@@ -1,3 +1,17 @@
 {
-  "targets": {}
+  "targets": {
+    "default": {
+      "resources": {
+        "runtimes": {
+          "cos": {
+            "runtimeId": "cosobserve_cos-JzqPQ2BNPk",
+            "runtimeArn": "arn:aws:bedrock-agentcore:us-west-2:361691913159:runtime/cosobserve_cos-JzqPQ2BNPk",
+            "roleArn": "arn:aws:iam::361691913159:role/AgentCore-cosobserve-defa-ApplicationAgentCosRuntim-g84kdNDNINpT"
+          }
+        },
+        "stackName": "AgentCore-cosobserve-default",
+        "deployHash": "0597f2e59044c0f9"
+      }
+    }
+  }
 }

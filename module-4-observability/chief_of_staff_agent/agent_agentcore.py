@@ -9,6 +9,7 @@ This is the THIN deployment wrapper. It holds the AgentCore plumbing only:
 It contains ZERO agent logic of its own — the agent's identity (system prompt,
 tools, cwd, setting_sources) comes from `build_agent_options()` in agent.py, the
 SAME function the local Module 1 `send_query()` uses. One source of truth.
+It also attaches OpenInference auto-instrumentation so agent/tool steps appear as spans. 
 
 Run locally:   agentcore dev
 Deployed:      AgentCore Runtime invokes the `invoke` entrypoint over HTTP.
@@ -20,7 +21,8 @@ from dotenv import load_dotenv
 
 from bedrock_agentcore import BedrockAgentCoreApp
 from claude_agent_sdk import ClaudeSDKClient
-
+from opentelemetry import trace
+from openinference.instrumentation.claude_agent_sdk import ClaudeAgentSDKInstrumentor
 # Reuse the agent's single source of truth.
 from agent import build_agent_options
 
@@ -31,6 +33,11 @@ load_dotenv()
 os.environ.setdefault("CLAUDE_CODE_USE_BEDROCK", "1")
 
 app = BedrockAgentCoreApp()
+
+# Reuse the ADOT tracer provider that `opentelemetry-instrument` already configured
+# (it SigV4-signs and exports spans to CloudWatch). Attaching the Claude Agent SDK's
+# auto-instrumentation to it makes agent/tool spans land in the same trace.
+ClaudeAgentSDKInstrumentor().instrument(tracer_provider=trace.get_tracer_provider())
 
 
 @app.entrypoint

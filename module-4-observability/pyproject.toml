@@ -11,6 +11,7 @@ dependencies = [
     "python-dotenv==1.2.2",
     "boto3==1.43.21",                     # invoke helper, Transaction Search, /aws/spans peek
     "ipykernel==7.2.0",                   # notebook kernel
+    "openinference-instrumentation-claude-agent-sdk==0.1.5"   # auto-emits agent/tool spans → see inside the agent in the trace
 ]
 
 [dependency-groups]
