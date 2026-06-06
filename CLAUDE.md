@@ -36,7 +36,7 @@ AWS credentials + Amazon Bedrock model access (no Athena/S3).
 │   │   ├── scripts/  financial_data/  audit/  output_reports/
 │   ├── utils/                     # HTML render helpers (from cookbook)
 │   ├── tests/                     # pytest harness (fast + slow tiers) — see Testing
-│   ├── pyproject.toml  README.md  .env.example
+│   ├── setup.sh  pyproject.toml  .env.example
 ├── module-2-deploy/                # ✅ Module 2 — deploy the SAME agent to AgentCore Runtime
 │   ├── module-2-deploy.ipynb       # guided notebook: configure → dev → deploy → invoke → cleanup
 │   ├── chief_of_staff_agent/       # COPY of Module 1's bundle + agent_agentcore.py (thin entrypoint)
@@ -45,7 +45,7 @@ AWS credentials + Amazon Bedrock model access (no Athena/S3).
 │   │   └── pyproject.toml          # in-container deps (SDK + bedrock-agentcore + aws-otel-distro)
 │   ├── agentcore/                  # @aws/agentcore project (agentcore.json, CDK, aws-targets.example.json)
 │   ├── tests/                      # fast (reuse/config/static) + slow (live deploy) tiers
-│   ├── pyproject.toml  README.md  .env.example
+│   ├── setup.sh  pyproject.toml  .env.example
 ├── module-3-memory/                # ✅ Module 3 — give the SAME agent cross-session memory (single-tenant)
 │   ├── module-3-memory.ipynb        # guided: deploy → session A (state fact) → session B (recall) → A/B → inspect LTM → cleanup
 │   ├── chief_of_staff_agent/        # M2 bundle + memory/session.py + memory-aware agent_agentcore.py
@@ -53,12 +53,12 @@ AWS credentials + Amazon Bedrock model access (no Athena/S3).
 │   │   └── agent_agentcore.py       # @app.entrypoint invoke(payload, context) — recall → run → record; {"memory":false} A/B toggle
 │   ├── agentcore/                   # agentcore.json with memories[] (SEMANTIC facts + USER_PREFERENCE prefs)
 │   ├── SPIKE_NOTES.md               # Phase-0 live findings (IAM auto-wired, LTM latency, verified boto3 shapes)
-│   ├── tests/  pyproject.toml  README.md  .env.example
+│   ├── tests/  setup.sh  pyproject.toml  .env.example
 ├── module-4-observability/         # ✅ Module 4 — trace the deployed agent in CloudWatch
 │   ├── module-4-observability.ipynb # guided: Transaction Search → deploy → Tracing toggle → invoke → view
 │   ├── chief_of_staff_agent/        # SAME bundle as M2; Dockerfile CMD wraps `opentelemetry-instrument`
 │   ├── scripts/enable_transaction_search.py  # idempotent account-level setup
-│   ├── agentcore/  tests/  pyproject.toml  README.md  .env.example
+│   ├── agentcore/  tests/  setup.sh  pyproject.toml  .env.example
 ├── advanced/text-to-sql-athena/   # 📦 the ORIGINAL BI/Student-Analytics workshop, archived as-is
 └── CLAUDE.md  LICENSE  CONTRIBUTING.md  CODE_OF_CONDUCT.md  .gitignore
 ```
@@ -74,8 +74,14 @@ AWS credentials + Amazon Bedrock model access (no Athena/S3).
 - **Dependencies are pinned exactly (`==`)**, not `>=` — runtime and test deps alike.
 - **Skills vs. CLAUDE.md vs. subagents** are taught as three distinct mechanisms: procedure / always-on
   facts / task delegation.
-- Setup steps (`uv sync`, kernel install) stay in **README + a markdown cell**, not code cells (they
-  create the very kernel the notebook runs in).
+- Setup steps (Node + AgentCore CLI, `npm ci`, `uv sync`, kernel install) live in a per-module
+  **`setup.sh`** (the READMEs were removed; deeper setup prose lives in the Workshop Studio pages). Each
+  notebook keeps an **equivalent setup cell** at the top as a fallback so it can bootstrap its own kernel.
+- **Notebook command style is mixed by design** — both `!agentcore …` shell-escape cells and
+  `subprocess.run([...])` cells appear, chosen for whatever reads clearest locally; there is **no
+  mandate to unify them**. `agentcore dev` stays a **terminal** step (it's a long-running server that
+  would block the kernel). The static test (`test_code_cells_parse`) skips lines starting with `!`/`%`
+  before `ast.parse`, so both styles pass.
 
 ### Module 2 / deployment decisions (from a real AWS spike)
 - **Tooling = the new `@aws/agentcore` npm CLI** (`agentcore create/add/deploy/invoke/remove`,
@@ -201,21 +207,25 @@ enabling the runtime Tracing toggle).
 ## Current state (branch `refactoring`)
 
 Done: archived old BI code → Module 1 → Module 2 (deploy, live-verified) → Module 4 (observability,
-live-verified) → **Module 3 (memory), built + fast-tested (31 green) + LIVE-VERIFIED end-to-end on
-us-west-2** (deploy + cross-session recall round-trip; see Module 3 decisions above). Module 3 is
-**single-tenant** and reuses the M2 bundle + the new `memory/session.py`; the `system_prompt_suffix`
-backport touched Module 1's `agent.py` and was re-synced to all bundle copies (drift-guard still green).
-Modules 1, 2, 4 are committed/pushed to `origin/refactoring`.
+live-verified) → **Module 3 (memory), built + fast-tested + LIVE-VERIFIED end-to-end on us-west-2**
+(deploy + cross-session recall round-trip; see Module 3 decisions above). Module 3 is **single-tenant**
+and reuses the M2 bundle + the new `memory/session.py`; the `system_prompt_suffix` backport touched
+Module 1's `agent.py` and was re-synced to all bundle copies (drift-guard still green). **All four
+modules are committed/pushed to `origin/refactoring`** (through `a6ecdc8 refactor-phase-1`).
 
-**Uncommitted in the working tree (this session):** Module 3 (new `module-3-memory/`), the
-`system_prompt_suffix` change to `module-{1,2,4}/.../agent.py`, and this CLAUDE.md update. **Not yet
-committed** — Module 3 is complete and live-verified; ready to commit when you are.
+**Phase-2 cleanup (this session):** the four notebooks moved much of their command flow to `setup.sh`
++ `!command`/`subprocess` cells, which broke the static `test_code_cells_parse` (it `ast.parse`d `!`
+lines). Fixed by skipping `!`/`%` lines in all four `tests/test_static.py`; removed a stray syntax-error
+cell in `module-3-memory.ipynb` (`REGION=‘…’` smart-quotes). Separately, the three
+`agentcore/.cli/deployed-state.json` files (which had captured a real account id + ARNs) are now
+**untracked** (`.gitignore` drops the `!…deployed-state.json` exception; local files retained — the CDK
+tolerates their absence). Fast tiers green after the fix: M1 33 · M2 16 · M3 31 · M4 15.
 
 ### Python version is pinned to 3.11 everywhere (parity)
 Local dev, the deployed container, and the (cosmetic-for-Container) runtime config all say 3.11:
 - **Local dev:** committed `.python-version` = `3.11.14` per MODULE folder (uv's native pin; `requires-python`
   is only a range and let the venvs drift to 3.12). `3.11.15` doesn't exist — 3.11.14 is the newest 3.11 build.
-- **Deployed container:** bundle `Dockerfile` `FROM python:3.11-slim-bookworm` — this is the ONLY thing that
+- **Deployed container:** bundle `Dockerfile` `FROM python:3.11-slim-trixie` — this is the ONLY thing that
   sets the deployed Python for a Container build. **Live-verified on us-west-2** (M2 deploy+invoke on the 3.11
   image passed, then torn down).
 - **`agentcore.json` `runtimeVersion: PYTHON_3_11`** — set for consistency, but **the CDK IGNORES it for
@@ -231,6 +241,6 @@ Local dev, the deployed container, and the (cosmetic-for-Container) runtime conf
    `dist/assets/cdk/lib/cdk-stack.ts`), and its sibling `bin/cdk.ts` was already committed, so the two were
    inconsistent. Fix: anchored the ignore to `/lib/` (repo-root Python only) and committed the three
    `agentcore/cdk/lib/cdk-stack.ts`. `node_modules` stays ignored (install with `npm ci`), and each module's
-   README now lists `(cd agentcore/cdk && npm ci)` as a one-time pre-deploy step. A fresh clone can now deploy
+   `setup.sh` runs `(cd agentcore/cdk && npm ci)` as a one-time pre-deploy step. A fresh clone can now deploy
    with just that `npm ci` — no more `sh: tsc: command not found`. (`cdk/dist/lib/` build output is still
    ignored via `cdk/.gitignore` `dist/`.)

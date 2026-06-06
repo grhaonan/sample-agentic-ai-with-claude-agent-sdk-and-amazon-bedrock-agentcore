@@ -35,11 +35,14 @@ def test_notebook_is_valid(nb):
 def test_every_code_cell_parses(nb):
     """Each code cell is syntactically valid Python (top-level await allowed)."""
     for i, cell in enumerate(code_cells(nb)):
-        wrapped = "async def _ph():\n" + "\n".join("    " + ln for ln in cell.source.splitlines())
+        # Skip IPython line magics / shell escapes (e.g. `!bash setup.sh`, `%cd`) —
+        # they're valid in a notebook kernel but not parseable as Python.
+        lines = [ln for ln in cell.source.splitlines() if not ln.lstrip().startswith(("!", "%"))]
+        wrapped = "async def _ph():\n" + "\n".join("    " + ln for ln in lines)
         try:
             ast.parse(wrapped)
         except SyntaxError:
-            ast.parse(cell.source)  # cells without await — re-raises with a clear message
+            ast.parse("\n".join(lines))  # cells without await — re-raises with a clear message
 
 
 def test_no_hardcoded_cookbook_model(all_code):

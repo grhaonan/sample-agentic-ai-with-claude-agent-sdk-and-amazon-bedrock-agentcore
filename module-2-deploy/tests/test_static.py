@@ -22,11 +22,14 @@ def test_code_cells_parse(nb):
     for i, c in enumerate(nb.cells):
         if c.cell_type != "code":
             continue
-        wrapped = "async def _():\n" + "\n".join("    " + ln for ln in c.source.splitlines())
+        # Skip IPython line magics / shell escapes (e.g. `!agentcore deploy`, `%cd`) —
+        # they're valid in a notebook kernel but not parseable as Python.
+        lines = [ln for ln in c.source.splitlines() if not ln.lstrip().startswith(("!", "%"))]
+        wrapped = "async def _():\n" + "\n".join("    " + ln for ln in lines)
         try:
             ast.parse(wrapped)
         except SyntaxError:
-            ast.parse(c.source)
+            ast.parse("\n".join(lines))
 
 
 def test_teaches_deploy_flow(nb):
