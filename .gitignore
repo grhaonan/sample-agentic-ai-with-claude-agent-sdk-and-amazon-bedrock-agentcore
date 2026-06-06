@@ -52,6 +52,7 @@ uv.lock
 # Project specific
 results/*
 */results/*
+**/results/
 temp/*
 # NOTE: the per-module bundle Dockerfile is intentionally NOT ignored — it is the
 # only thing that sets the deployed Python (the FROM image), so it must be committed
