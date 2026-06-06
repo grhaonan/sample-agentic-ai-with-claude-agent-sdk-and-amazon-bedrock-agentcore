@@ -57,6 +57,7 @@ cp agentcore/aws-targets.example.json agentcore/aws-targets.json   # set your ac
 uv run python scripts/enable_transaction_search.py --region us-west-2
 
 # 2. Deploy the already-observable agent (same as Module 2)
+(cd agentcore/cdk && npm ci)   # ONE-TIME: install the CDK toolchain (node_modules isn't committed)
 agentcore deploy -y
 
 # 3. Generate traffic — pass a session id so the dashboard correlates the invocation

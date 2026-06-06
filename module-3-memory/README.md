@@ -59,6 +59,7 @@ cp agentcore/aws-targets.example.json agentcore/aws-targets.json
 ## Deploy & demo (the notebook walks through this)
 
 ```bash
+(cd agentcore/cdk && npm ci)             # ONE-TIME: install the CDK toolchain (node_modules isn't committed)
 agentcore validate                       # check config (memories[] now populated)
 agentcore deploy -y                      # provisions the runtime AND the CosMemory resource;
                                          #   auto-wires memory IAM + injects MEMORY_COSMEMORY_ID

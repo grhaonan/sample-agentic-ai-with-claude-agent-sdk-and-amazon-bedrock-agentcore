@@ -223,9 +223,14 @@ Local dev, the deployed container, and the (cosmetic-for-Container) runtime conf
   `codeConfiguration.runtime`; Container uses just `containerConfiguration.containerUri`). The Dockerfile wins.
 - Bundles keep `requires-python = ">=3.11"` (a floor, fine).
 
-**Open items / repo-wide quirks (one resolved this session):**
-1. ✅ **RESOLVED — `Dockerfile` un-ignored & committed.** Removed the global `Dockerfile` ignore so the three
-   bundle Dockerfiles (now `python:3.11`) are tracked. A fresh clone now has them; `test_dockerfile_*` passes.
-2. **Still open — CDK project isn't reproducible from git:** `agentcore/cdk/lib/cdk-stack.ts` is gitignored
-   (`.gitignore` `lib/`) and `node_modules` is gitignored — so `agentcore deploy` (`tsc` build) fails on a fresh
-   checkout until you restore `lib/cdk-stack.ts` and `npm ci`. Symptom: `sh: tsc: command not found`.
+**Repo-wide reproducibility quirks — both RESOLVED this session:**
+1. ✅ **`Dockerfile` un-ignored & committed.** Removed the global `Dockerfile` ignore so the three bundle
+   Dockerfiles (now `python:3.11`) are tracked. A fresh clone now has them; `test_dockerfile_*` passes.
+2. ✅ **CDK source `lib/cdk-stack.ts` un-ignored & committed.** It was swallowed by the Python-packaging
+   `lib/` rule — but it's a CLI-scaffolded SOURCE file (identical to the `@aws/agentcore` template at
+   `dist/assets/cdk/lib/cdk-stack.ts`), and its sibling `bin/cdk.ts` was already committed, so the two were
+   inconsistent. Fix: anchored the ignore to `/lib/` (repo-root Python only) and committed the three
+   `agentcore/cdk/lib/cdk-stack.ts`. `node_modules` stays ignored (install with `npm ci`), and each module's
+   README now lists `(cd agentcore/cdk && npm ci)` as a one-time pre-deploy step. A fresh clone can now deploy
+   with just that `npm ci` — no more `sh: tsc: command not found`. (`cdk/dist/lib/` build output is still
+   ignored via `cdk/.gitignore` `dist/`.)

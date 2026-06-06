@@ -51,6 +51,7 @@ cp agentcore/aws-targets.example.json agentcore/aws-targets.json
 ## Deploy (the notebook walks through this)
 
 ```bash
+(cd agentcore/cdk && npm ci)             # ONE-TIME: install the CDK toolchain (node_modules isn't committed)
 agentcore validate                       # check config
 agentcore dev                            # OPTIONAL: run the agent locally (http://localhost:8080)
 agentcore deploy -y                      # build image → push to ECR → deploy runtime (via CDK)
