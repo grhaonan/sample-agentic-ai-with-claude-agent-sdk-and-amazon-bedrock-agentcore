@@ -17,7 +17,7 @@ to match it.
 | **2 — Deploy** | Wrap the agent in an AgentCore Runtime entrypoint, deploy (Container/ECR), invoke over HTTP | ✅ **Built & live-verified (us-west-2)** |
 | **3 — Memory** | AgentCore Memory (short-term events + long-term extraction); single-tenant | ✅ **Built & live-verified (us-west-2): deploy + cross-session recall round-trip** |
 | **4 — Observability** | View agent traces in AgentCore Observability / CloudWatch GenAI dashboard | ✅ **Built & live-verified (us-west-2)** |
-| **Advanced (optional)** | Track 1: Text-to-SQL on Athena · Track 2: Follow-up questions | 📦 Archived (see below) |
+| **Advanced (optional)** | `agentic-analytics/` — text-to-SQL BI agent on Athena (M0 setup → M1 local → M2 deploy+observe → M3 follow-up) | ✅ **Rebuilt & live-verified (us-west-2)** |
 
 The running example for Modules 1–4 is the **Chief of Staff agent** (fictional startup "TechStart Inc" —
 runway / burn / hiring analysis), adapted from the Claude cookbook. It needs **near-zero infra**: just
@@ -59,7 +59,11 @@ AWS credentials + Amazon Bedrock model access (no Athena/S3).
 │   ├── chief_of_staff_agent/        # SAME bundle as M2; Dockerfile CMD wraps `opentelemetry-instrument`
 │   ├── scripts/enable_transaction_search.py  # idempotent account-level setup
 │   ├── agentcore/  tests/  setup.sh  pyproject.toml  .env.example
-├── advanced/text-to-sql-athena/   # 📦 the ORIGINAL BI/Student-Analytics workshop, archived as-is
+├── advanced/agentic-analytics/    # ✅ optional BI track — text-to-SQL agent on Athena (rebuilt, live-verified)
+│   ├── module-0-setup/            # one-shot infra: scripts/setup_infrastructure.py (S3 + Athena DB/tables) + verify()
+│   ├── module-1-local-agent/      # the BI agent local; analytics_agent/agent.py build_agent_options() (one source of truth)
+│   ├── module-2-deploy/           # deploy + observability; full CLI lifecycle (create→deploy→invoke→traces); CDK injects Athena/S3/Glue IAM
+│   ├── module-3-follow-up/        # AskUserQuestion clarification + serverless multi-round session resume
 └── CLAUDE.md  LICENSE  CONTRIBUTING.md  CODE_OF_CONDUCT.md  .gitignore
 ```
 
@@ -191,6 +195,12 @@ uv run --group test pytest -m slow    # SLOW: deploy → session A writes → se
 # Module 4
 uv run --group test pytest            # FAST: drift-guard + enableOtel/OTEL-wrapper config + TS helper + notebook
 uv run --group test pytest -m slow    # SLOW: enable TS → deploy → invoke → assert OTEL active; span check best-effort
+
+# Advanced track (advanced/agentic-analytics/<module>) — same FAST/SLOW split per module
+# M0: FAST static (script parses, idempotency markers, no manual IAM, notebook) · SLOW reuses verify() on live S3/Athena
+# M1: FAST options-shape/no-hardcoded-model/clarification-override/bundle/notebook · SLOW runs the agent on Bedrock+Athena
+# M2: FAST reuse-drift-guard/config(enableOtel,Dockerfile,cdk-lib pinned)/notebook · SLOW real create→deploy→invoke→teardown
+# M3: FAST reuse(clarification-via-builder,resume,clarification-json)/driver-unit/config · SLOW deploy + ask→answer+resume round-trip
 ```
 
 Verified green: Module 1 fast 33 + slow 7 (live Bedrock); Module 2 **fast 16** + live deploy/invoke on
@@ -203,6 +213,48 @@ enabling the runtime Tracing toggle).
 > **Deploy note:** local Docker is NOT needed — the `@aws/agentcore` Container build runs in the cloud
 > (CodeBuild, ARM64). `agentcore deploy` reads the target from `agentcore/aws-targets.json` (gitignored);
 > the account/region must be CDK-bootstrapped first (`cdk bootstrap`).
+
+### Advanced track — `advanced/agentic-analytics/` (rebuilt Phase 2; live-verified us-west-2)
+Text-to-SQL BI agent over a fictional Student Analytics dataset on Athena. Replaces the old
+`advanced/text-to-sql-athena/` (deleted). Four self-contained uv modules mirroring the Phase-1 ladder.
+- **Decisions:** parent `agentic-analytics/`, inner `module-0..3`; CLI **`@aws/agentcore@0.17.0`** (same
+  as Phase 1, NOT preview). **4 modules** (observability folded into M2). Agent bundle dir is
+  `analytics_agent/`; one-source-of-truth = `analytics_agent/agent.py` `build_agent_options()` (drift-guard
+  keeps M1/M2/M3 byte-identical). Clarification (M3) is an OVERRIDE flag `enable_clarification=True`, not a fork.
+- **Observability collapses to config** — the 0.17.0 CLI ALREADY does it (verified by tarball diff + a live
+  Phase-0 spike): `enableOtel:true` → the container template wraps `opentelemetry-instrument`, and
+  `agentcore deploy` auto-enables Transaction Search; traces are reachable via `agentcore traces list`
+  with **NO manual console Tracing toggle** (this REFUTES Phase-1 M4's claim that a console toggle is
+  required). So the old 745+539-line hand-rolled `*_observable.py` approach is **deleted**; a test guards
+  against its return. (We keep the `openinference-instrumentation-claude-agent-sdk` dep for richer spans.)
+- **M2 teaches the FULL CLI lifecycle** (not deploy-only): `agentcore create --no-agent` + `add agent
+  --type byo` (scaffold) → configure → `deploy` → `invoke` → `traces`. A known-good `agentcore/` is committed
+  as the fallback. `add agent` requires `--framework` even for BYO (no claude-agent-sdk option; we pass
+  `Strands` — it's ignored for BYO + our own bundle/Dockerfile).
+- **IAM:** the deployed runtime calls Athena/Glue/S3. The CDK auto-role only has Bedrock+Logs+X-Ray, so
+  `cdk/lib/cdk-stack.ts` adds Athena/Glue/S3 statements via `application.environments → runtime.role
+  .addToPrincipalPolicy(...)` — every deploy gets them, no manual step. (Confirmed live: the deployed role
+  carried AthenaQueryExecution/GlueCatalogAccess/S3DataAndResults and the agent queried Athena + wrote S3.)
+- **CDK floating-version trap (same class the repo already flagged):** a fresh `agentcore create` pins
+  `aws-cdk-lib: ^2.248.0` → npm resolves 2.258.0 (cloud-assembly schema 54) but the bundled `aws-cdk` CLI
+  (2.1100.1) reads only schema 53 → synth fails. **Fix: pin `aws-cdk-lib` EXACTLY (2.257.0)** in
+  `cdk/package.json` + commit `package-lock.json` so `npm ci` reproduces it.
+- **Module 0 = one command, no pytest for participants.** `scripts/setup_infrastructure.py` is idempotent
+  (S3 bucket + upload 2 demo CSVs + `CREATE DATABASE/TABLE IF NOT EXISTS` + smoke query) and prints a human
+  ✅ checklist via a `verify()` function that the SLOW test reuses. Table DDL uses Athena PHYSICAL types and
+  lives in the script (NOT derived from the metadata YAML — that's the agent's LOGICAL schema, a different layer).
+- **Data placement:** the 16MB demo CSVs live ONLY in `module-0-setup/data/` (setup-time → S3). The ~20KB
+  metadata YAML + sample CSVs live in each agent bundle's `data/metadata/` (runtime schema docs).
+- **`_default_output_location()` in agent.py** derives the Athena results bucket from the account id at
+  runtime, so nothing account-specific is hardcoded in committed config (M2 entrypoint reuses it).
+- **Stale-doc fixes:** the bundle `CLAUDE.md` now references the real skills (`enrollment`/`financial`, was
+  `academic-performance`/`enrollment-analytics`/`financial-analytics`) and only the 2 tables that exist
+  (was 10). The duplicate `complete_code_sample/` is deleted.
+- **Verified green:** M0 fast 6 + slow 4 (live S3/Athena); M1 fast 11 + slow 1 (agent queried Athena,
+  "10,000 distinct students"); M2 fast 14 + live deploy→invoke (answered "3,594" + S3 upload + role IAM
+  confirmed + trace in CloudWatch, zero manual steps); M3 fast 15 + live clarification round-trip (ambiguous
+  "top 5 students" → clarification JSON + session id → answer "rank by GPA" with resume → GPA-ranked answer).
+  All deploys torn down after.
 
 ## Current state (branch `refactoring`)
 
