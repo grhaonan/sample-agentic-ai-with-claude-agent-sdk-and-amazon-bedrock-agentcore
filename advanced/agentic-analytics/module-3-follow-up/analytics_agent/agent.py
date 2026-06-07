@@ -79,8 +79,18 @@ def _athena_executor(request_id: str):
 
 
 def _make_athena_server(request_id: str):
-    """Create the in-process MCP server exposing the execute_athena_query tool."""
-    executor = _athena_executor(request_id)
+    """Create the in-process MCP server exposing the execute_athena_query tool.
+
+    The AthenaQueryExecutor (and its STS/boto3 calls) is built lazily on first tool
+    use, NOT at construction time — so build_agent_options() stays a pure, no-AWS
+    call that the fast tests can exercise without credentials.
+    """
+    executor_holder: dict = {}
+
+    def _get_executor():
+        if "executor" not in executor_holder:
+            executor_holder["executor"] = _athena_executor(request_id)
+        return executor_holder["executor"]
 
     @tool(
         "execute_athena_query",
@@ -89,7 +99,7 @@ def _make_athena_server(request_id: str):
     )
     async def execute_athena_query(args: dict) -> dict:
         try:
-            result = executor.execute_and_download(
+            result = _get_executor().execute_and_download(
                 query=args.get("query", ""),
                 local_filename=args.get("local_filename", "query_results.csv"),
             )

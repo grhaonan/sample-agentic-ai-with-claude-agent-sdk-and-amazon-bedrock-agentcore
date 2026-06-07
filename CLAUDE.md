@@ -251,14 +251,21 @@ Text-to-SQL BI agent over a fictional Student Analytics dataset on Athena. Repla
   `aws-cdk-lib: ^2.248.0` → npm resolves 2.258.0 (cloud-assembly schema 54) but the bundled `aws-cdk` CLI
   (2.1100.1) reads only schema 53 → synth fails. **Fix: pin `aws-cdk-lib` EXACTLY (2.257.0)** in
   `cdk/package.json` + commit `package-lock.json` so `npm ci` reproduces it.
-- **Module 0 = one command, no pytest for participants.** `scripts/setup_infrastructure.py` is idempotent
-  (S3 bucket + upload 2 demo CSVs + `CREATE DATABASE/TABLE IF NOT EXISTS` + smoke query) and prints a human
-  ✅ checklist via a `verify()` function that the SLOW test reuses. Table DDL uses Athena PHYSICAL types and
-  lives in the script (NOT derived from the metadata YAML — that's the agent's LOGICAL schema, a different layer).
+- **Module 0 infra script.** `scripts/setup_infrastructure.py` is idempotent (S3 bucket + upload 2 demo
+  CSVs + `CREATE DATABASE/TABLE IF NOT EXISTS` + smoke query) and prints a human ✅ checklist via a
+  `verify()` function that the SLOW test reuses. Table DDL uses Athena PHYSICAL types and lives in the
+  script (NOT derived from the metadata YAML — that's the agent's LOGICAL schema, a different layer).
+  **Run flow (changed in `phase2 beta`):** `setup.sh` now only installs deps + registers the kernel; the
+  notebook's own cell runs `setup_infrastructure.py --region {REGION}` (participants see infra creation in
+  the notebook, not hidden in setup.sh). Default region is now **auto-detected (falls back to us-east-1)**,
+  not hardcoded us-west-2.
 - **Data placement:** the 16MB demo CSVs live ONLY in `module-0-setup/data/` (setup-time → S3). The ~20KB
   metadata YAML + sample CSVs live in each agent bundle's `data/metadata/` (runtime schema docs).
-- **`_default_output_location()` in agent.py** derives the Athena results bucket from the account id at
-  runtime, so nothing account-specific is hardcoded in committed config (M2 entrypoint reuses it).
+- **`_default_output_location()` in agent.py** derives the Athena results bucket from the account id, so
+  nothing account-specific is hardcoded in committed config (M2 entrypoint reuses it). ⚠️ It calls STS, so
+  the Athena executor is built **lazily on first tool use** (not when `build_agent_options()` runs) — that
+  keeps `build_agent_options()` a pure, no-AWS call the FAST tests can exercise without credentials. (A
+  `phase2 beta` change had surfaced this: the eager STS call made the fast tests fail when creds were absent.)
 - **Stale-doc fixes:** the bundle `CLAUDE.md` now references the real skills (`enrollment`/`financial`, was
   `academic-performance`/`enrollment-analytics`/`financial-analytics`) and only the 2 tables that exist
   (was 10). The duplicate `complete_code_sample/` is deleted.
