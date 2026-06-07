@@ -1,5 +1,15 @@
 # Project: Agentic AI with Claude Agent SDK + Amazon Bedrock AgentCore
 
+> ⚠️ **ALWAYS clear notebook outputs before committing.** Notebook cell *outputs* must never be
+> committed — they have leaked real AWS account ids, ARNs, and S3 presigned-URL temporary credentials
+> (`ASIA…` access keys + `X-Amz-Security-Token`) from live runs. Before any commit that touches
+> `*.ipynb`, run:
+> ```bash
+> jupyter nbconvert --clear-output --inplace path/to/*.ipynb   # or: uv run jupyter nbconvert ...
+> ```
+> Only commit notebook *source* (code + markdown), never run artifacts. (Participants generate their
+> own outputs.) If you find committed outputs, scrub them by matching output CONTENT, not cell numbers.
+
 This repo holds the **code** for a hands-on workshop. The **instructions** live in a separate
 Workshop Studio repo (`democratizing-business-intelligence-by-using-claude-agent-sdk-on-amazon-bedrock-agentcore`),
 which has already been refactored into the new "ladder" structure below. This repo is being rebuilt
