@@ -3,8 +3,14 @@ set -e
 cd "$(dirname "$0")"
 MODULE_NAME="agentic-analytics-module-3-follow-up"
 
-# .env
-[ -f .env ] || cp .env.example .env
+# .env (region from current environment + model config)
+cat > .env <<EOF
+AWS_REGION=${AWS_REGION:-us-east-1}
+CLAUDE_CODE_USE_BEDROCK=1
+ANTHROPIC_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0
+ANTHROPIC_SMALL_FAST_MODEL=us.anthropic.claude-haiku-4-5-20251001-v1:0
+ATHENA_DATABASE=student_analytics
+EOF
 
 # Node.js 20 + AgentCore CLI (idempotent)
 if ! command -v agentcore &>/dev/null; then
