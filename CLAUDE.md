@@ -17,9 +17,14 @@ to match it.
 
 > This file is a **project record for developers / future sessions** — what the repo is and where we
 > are. It is *not* an agent runtime file. The agent's own context lives at
-> `module-1-local-agent/chief_of_staff_agent/CLAUDE.md` (loaded by the SDK via `setting_sources`).
+> `foundations/build-an-ai-chief-of-staff/module-1-local-agent/chief_of_staff_agent/CLAUDE.md`
+> (loaded by the SDK via `setting_sources`).
 
 ## The workshop = a progressive ladder (use-case-agnostic)
+
+**Two top-level tracks** (each a self-contained use case):
+- **`foundations/build-an-ai-chief-of-staff/`** — the core ladder, Modules 1–4 (Chief-of-Staff agent).
+- **`advanced/agentic-analytics/`** — optional BI track, Modules 0–3 (text-to-SQL agent on Athena).
 
 | Module | Teaches | Status in this repo |
 |--------|---------|---------------------|
@@ -37,38 +42,39 @@ AWS credentials + Amazon Bedrock model access (no Athena/S3).
 
 ```
 .
-├── module-1-local-agent/          # ✅ Module 1 — self-contained, uv-managed
-│   ├── module-1-local-agent.ipynb # single notebook: Part 1A → 1B → "all together"
-│   ├── chief_of_staff_agent/      # the agent's body (read from disk by the SDK)
-│   │   ├── agent.py               # send_query() entrypoint (Module 2 will deploy this)
-│   │   ├── CLAUDE.md              # agent runtime context (NOT this file)
-│   │   ├── .claude/{skills,agents,commands,hooks,output-styles,settings.json}
-│   │   ├── scripts/  financial_data/  audit/  output_reports/
-│   ├── utils/                     # HTML render helpers (from cookbook)
-│   ├── tests/                     # pytest harness (fast + slow tiers) — see Testing
-│   ├── setup.sh  pyproject.toml  .env.example
-├── module-2-deploy/                # ✅ Module 2 — deploy the SAME agent to AgentCore Runtime
-│   ├── module-2-deploy.ipynb       # guided notebook: configure → dev → deploy → invoke → cleanup
-│   ├── chief_of_staff_agent/       # COPY of Module 1's bundle + agent_agentcore.py (thin entrypoint)
-│   │   ├── agent_agentcore.py      # @app.entrypoint — reuses build_agent_options() (no dup logic)
-│   │   ├── Dockerfile              # Linux/arm64; pip-installs SDK fresh (CodeZip can't — see below)
-│   │   └── pyproject.toml          # in-container deps (SDK + bedrock-agentcore + aws-otel-distro)
-│   ├── agentcore/                  # @aws/agentcore project (agentcore.json, CDK, aws-targets.example.json)
-│   ├── tests/                      # fast (reuse/config/static) + slow (live deploy) tiers
-│   ├── setup.sh  pyproject.toml  .env.example
-├── module-3-memory/                # ✅ Module 3 — give the SAME agent cross-session memory (single-tenant)
-│   ├── module-3-memory.ipynb        # guided: deploy → session A (state fact) → session B (recall) → A/B → inspect LTM → cleanup
-│   ├── chief_of_staff_agent/        # M2 bundle + memory/session.py + memory-aware agent_agentcore.py
-│   │   ├── memory/session.py        # get_memory(): retrieve_context() (STM list_events + LTM retrieve) + record_turn() (create_event)
-│   │   └── agent_agentcore.py       # @app.entrypoint invoke(payload, context) — recall → run → record; {"memory":false} A/B toggle
-│   ├── agentcore/                   # agentcore.json with memories[] (SEMANTIC facts + USER_PREFERENCE prefs)
-│   ├── SPIKE_NOTES.md               # Phase-0 live findings (IAM auto-wired, LTM latency, verified boto3 shapes)
-│   ├── tests/  setup.sh  pyproject.toml  .env.example
-├── module-4-observability/         # ✅ Module 4 — trace the deployed agent in CloudWatch
-│   ├── module-4-observability.ipynb # guided: Transaction Search → deploy → invoke → view (no manual toggle; see M4 notes)
-│   ├── chief_of_staff_agent/        # SAME bundle as M2; Dockerfile CMD wraps `opentelemetry-instrument`
-│   ├── scripts/enable_transaction_search.py  # idempotent account-level setup
-│   ├── agentcore/  tests/  setup.sh  pyproject.toml  .env.example
+├── foundations/build-an-ai-chief-of-staff/   # ✅ the Chief-of-Staff ladder (Modules 1–4)
+│   ├── module-1-local-agent/          # ✅ Module 1 — self-contained, uv-managed
+│   │   ├── module-1-local-agent.ipynb # single notebook: Part 1A → 1B → "all together"
+│   │   ├── chief_of_staff_agent/      # the agent's body (read from disk by the SDK)
+│   │   │   ├── agent.py               # send_query() entrypoint (Module 2 will deploy this)
+│   │   │   ├── CLAUDE.md              # agent runtime context (NOT this file)
+│   │   │   ├── .claude/{skills,agents,commands,hooks,output-styles,settings.json}
+│   │   │   ├── scripts/  financial_data/  audit/  output_reports/
+│   │   ├── utils/                     # HTML render helpers (from cookbook)
+│   │   ├── tests/                     # pytest harness (fast + slow tiers) — see Testing
+│   │   ├── setup.sh  pyproject.toml  .env.example
+│   ├── module-2-deploy/                # ✅ Module 2 — deploy the SAME agent to AgentCore Runtime
+│   │   ├── module-2-deploy.ipynb       # guided notebook: configure → dev → deploy → invoke → cleanup
+│   │   ├── chief_of_staff_agent/       # COPY of Module 1's bundle + agent_agentcore.py (thin entrypoint)
+│   │   │   ├── agent_agentcore.py      # @app.entrypoint — reuses build_agent_options() (no dup logic)
+│   │   │   ├── Dockerfile              # Linux/arm64; pip-installs SDK fresh (CodeZip can't — see below)
+│   │   │   └── pyproject.toml          # in-container deps (SDK + bedrock-agentcore + aws-otel-distro)
+│   │   ├── agentcore/                  # @aws/agentcore project (agentcore.json, CDK, aws-targets.example.json)
+│   │   ├── tests/                      # fast (reuse/config/static) + slow (live deploy) tiers
+│   │   ├── setup.sh  pyproject.toml  .env.example
+│   ├── module-3-memory/                # ✅ Module 3 — give the SAME agent cross-session memory (single-tenant)
+│   │   ├── module-3-memory.ipynb        # guided: deploy → session A (state fact) → session B (recall) → A/B → inspect LTM → cleanup
+│   │   ├── chief_of_staff_agent/        # M2 bundle + memory/session.py + memory-aware agent_agentcore.py
+│   │   │   ├── memory/session.py        # get_memory(): retrieve_context() (STM list_events + LTM retrieve) + record_turn() (create_event)
+│   │   │   └── agent_agentcore.py       # @app.entrypoint invoke(payload, context) — recall → run → record; {"memory":false} A/B toggle
+│   │   ├── agentcore/                   # agentcore.json with memories[] (SEMANTIC facts + USER_PREFERENCE prefs)
+│   │   ├── SPIKE_NOTES.md               # Phase-0 live findings (IAM auto-wired, LTM latency, verified boto3 shapes)
+│   │   ├── tests/  setup.sh  pyproject.toml  .env.example
+│   ├── module-4-observability/         # ✅ Module 4 — trace the deployed agent in CloudWatch
+│   │   ├── module-4-observability.ipynb # guided: Transaction Search → deploy → invoke → view (no manual toggle; see M4 notes)
+│   │   ├── chief_of_staff_agent/        # SAME bundle as M2; Dockerfile CMD wraps `opentelemetry-instrument`
+│   │   ├── scripts/enable_transaction_search.py  # idempotent account-level setup
+│   │   ├── agentcore/  tests/  setup.sh  pyproject.toml  .env.example
 ├── advanced/agentic-analytics/    # ✅ optional BI track — text-to-SQL agent on Athena (rebuilt, live-verified)
 │   ├── module-0-setup/            # one-shot infra: scripts/setup_infrastructure.py (S3 + Athena DB/tables) + verify()
 │   ├── module-1-local-agent/      # the BI agent local; analytics_agent/agent.py build_agent_options() (one source of truth)
