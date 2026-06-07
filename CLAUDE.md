@@ -55,7 +55,7 @@ AWS credentials + Amazon Bedrock model access (no Athena/S3).
 │   ├── SPIKE_NOTES.md               # Phase-0 live findings (IAM auto-wired, LTM latency, verified boto3 shapes)
 │   ├── tests/  setup.sh  pyproject.toml  .env.example
 ├── module-4-observability/         # ✅ Module 4 — trace the deployed agent in CloudWatch
-│   ├── module-4-observability.ipynb # guided: Transaction Search → deploy → Tracing toggle → invoke → view
+│   ├── module-4-observability.ipynb # guided: Transaction Search → deploy → invoke → view (no manual toggle; see M4 notes)
 │   ├── chief_of_staff_agent/        # SAME bundle as M2; Dockerfile CMD wraps `opentelemetry-instrument`
 │   ├── scripts/enable_transaction_search.py  # idempotent account-level setup
 │   ├── agentcore/  tests/  setup.sh  pyproject.toml  .env.example
@@ -109,20 +109,28 @@ AWS credentials + Amazon Bedrock model access (no Athena/S3).
   only `aws-targets.example.json`. Participants copy + fill it in.
 ### Module 4 / observability decisions (live-verified on us-west-2)
 Observability adds **zero agent code** (same bundle as M2; drift-guard test enforces it). The archived
-745-line manual `openinference`/hand-span approach is **obsolete** — not used. Three switches make a
-trace appear in the CloudWatch GenAI dashboard, and **all three are required** (proven by trial):
-1. **Account-level CloudWatch Transaction Search** — one-time; makes spans searchable in `/aws/spans`.
-   Automated by `scripts/enable_transaction_search.py` (idempotent).
-2. **Container EMITS spans** — the Dockerfile `CMD` must run under **`opentelemetry-instrument`**
-   (from `aws-opentelemetry-distro`) + ADOT env (`AGENT_OBSERVABILITY_ENABLED=true`, `OTEL_*`).
-   ⚠️ **Gotcha:** for a BYO-Container with a custom CMD the runtime does **NOT** auto-inject the OTEL
-   wrapper — we add it ourselves. (M2's Dockerfile comment claiming auto-injection was wrong.)
-3. **Per-runtime Tracing toggle DELIVERS spans** — a **console** action (AgentCore → Agent Runtime →
-   agent → Tracing → Edit → Enable). **No public CLI/`agentcore.json` field** for runtime resources
-   (the SDK delivery API only covers memory/gateway). So Module 4's notebook teaches it as a one-time
-   manual toggle step. Without it, the agent emits spans but they never reach CloudWatch.
-- **End-to-end proof:** after all three + `agentcore invoke --session-id <33+ chars>`, a `POST /invocations`
-  span with the session id landed in `/aws/spans` within ~2 min. (Session ids must be **≥33 chars**.)
+745-line manual `openinference`/hand-span approach is **obsolete** — not used.
+
+**CORRECTED understanding (the earlier "three switches, all required" framing was overstated).** The
+per-runtime **Tracing toggle is NOT a hard gate for the agent's own traces** — it controls a *different*
+class of span. There are two span sources + one real gate:
+1. **Account-level CloudWatch Transaction Search** — the ONE true hard gate. Nothing is searchable in
+   `/aws/spans` without it. One-time per account; the `b41a20e` Phase-1 edit + this track rely on
+   `agentcore deploy` auto-enabling it (or `scripts/enable_transaction_search.py`).
+2. **Application spans (the agent's own GenAI/tool-call/token-usage spans the dashboard renders)** —
+   emitted by the **container** via ADOT (`opentelemetry-instrument` CMD + `AGENT_OBSERVABILITY_ENABLED`
+   + `OTEL_*` exporter env). This is the "enable observability in agent code" path: the in-container ADOT
+   SDK exports straight to CloudWatch via OTLP, so these flow **whether or not the runtime Tracing toggle
+   is on**. (BYO-Container with a custom CMD: the runtime does NOT auto-inject the wrapper, so we add it.)
+3. **Per-runtime Tracing toggle** — a console action (AgentCore → Agent Runtime → agent → Tracing → Edit
+   → Enable; no public CLI field). It only governs **service-generated runtime spans** (the platform-level
+   `POST /invocations` resource span) — NOT the agent's application spans. So the dashboard shows the
+   agent's traces even with the toggle "Not enabled". Phase-1 M4 dropped its manual-toggle step in
+   `b41a20e remove the trace toggle` for this reason.
+- **Why the old note was wrong:** the earlier "spike" watched specifically for the `POST /invocations`
+  span (which IS service-generated and *does* need the toggle) and over-generalized to "without the
+  toggle, spans never reach CloudWatch." Agent application spans never needed it.
+- **Session ids must be ≥33 chars** for `agentcore invoke`.
 - **Other gotcha:** pin `aws-cdk-lib` **exactly** in `agentcore/cdk/package.json` — a floating `^` let it
   resolve to a lib newer than the bundled `aws-cdk` CLI could read (CDK synth "schema version" error).
 ### Module 3 / memory decisions (Phase-0 spike-verified on us-west-2; see `module-3-memory/SPIKE_NOTES.md`)
@@ -207,8 +215,9 @@ Verified green: Module 1 fast 33 + slow 7 (live Bedrock); Module 2 **fast 16** +
 us-west-2; Module 3 **fast 31** (reuse 9 + config 7 + memory-helper 9 + notebook 6) + **slow 2 live-verified
 on us-west-2** (deploy runtime+CosMemory → session A writes `$42.5M` → session B recalls it, no AccessDenied →
 IAM auto-wiring confirmed → teardown destroyed both; ~11 min); Module 4 **fast 15** + **live-verified
-end-to-end** on us-west-2 (a `POST /invocations` span with our session id reached `/aws/spans` after
-enabling the runtime Tracing toggle).
+end-to-end** on us-west-2 (the service `POST /invocations` span reached `/aws/spans` after enabling the
+runtime Tracing toggle — but note that toggle is only needed for *that* service span; the agent's own
+application spans flow without it, see the corrected Module 4 section).
 
 > **Deploy note:** local Docker is NOT needed — the `@aws/agentcore` Container build runs in the cloud
 > (CodeBuild, ARM64). `agentcore deploy` reads the target from `agentcore/aws-targets.json` (gitignored);
@@ -223,10 +232,13 @@ Text-to-SQL BI agent over a fictional Student Analytics dataset on Athena. Repla
   keeps M1/M2/M3 byte-identical). Clarification (M3) is an OVERRIDE flag `enable_clarification=True`, not a fork.
 - **Observability collapses to config** — the 0.17.0 CLI ALREADY does it (verified by tarball diff + a live
   Phase-0 spike): `enableOtel:true` → the container template wraps `opentelemetry-instrument`, and
-  `agentcore deploy` auto-enables Transaction Search; traces are reachable via `agentcore traces list`
-  with **NO manual console Tracing toggle** (this REFUTES Phase-1 M4's claim that a console toggle is
-  required). So the old 745+539-line hand-rolled `*_observable.py` approach is **deleted**; a test guards
-  against its return. (We keep the `openinference-instrumentation-claude-agent-sdk` dep for richer spans.)
+  `agentcore deploy` auto-enables account-level Transaction Search (the one real gate). The agent's own
+  application spans (GenAI/tool/token) are exported by the in-container ADOT SDK and are reachable via
+  `agentcore traces list` **without the per-runtime Tracing toggle** — that toggle only governs the
+  service-generated `POST /invocations` span, not the agent's traces (see the corrected Module 4 section
+  above for the full two-span-sources breakdown). So the old 745+539-line hand-rolled `*_observable.py`
+  approach is **deleted**; a test guards against its return. (We keep the
+  `openinference-instrumentation-claude-agent-sdk` dep for richer spans.)
 - **M2 teaches the FULL CLI lifecycle** (not deploy-only): `agentcore create --no-agent` + `add agent
   --type byo` (scaffold) → configure → `deploy` → `invoke` → `traces`. A known-good `agentcore/` is committed
   as the fallback. `add agent` requires `--framework` even for BYO (no claude-agent-sdk option; we pass
