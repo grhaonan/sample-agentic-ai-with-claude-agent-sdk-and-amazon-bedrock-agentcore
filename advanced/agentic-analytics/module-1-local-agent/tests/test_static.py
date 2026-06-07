@@ -39,18 +39,31 @@ def test_claude_md_skill_names_are_not_stale():
     assert "financial-analytics" not in text
 
 
+def _strip_shell_lines(source: str) -> str:
+    """Blank out IPython shell-escape (!) / magic (%) lines, including backslash
+    line-continuations, so the rest parses as plain Python."""
+    out, skipping = [], False
+    for line in source.splitlines():
+        if skipping:
+            out.append("")
+            skipping = line.rstrip().endswith("\\")
+            continue
+        if line.lstrip().startswith(("!", "%")):
+            out.append("")
+            skipping = line.rstrip().endswith("\\")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
 @pytest.mark.skipif(not NOTEBOOK.exists(), reason="notebook not created yet")
 def test_notebook_code_cells_parse():
     nb = nbformat.read(NOTEBOOK, as_version=4)
     for i, cell in enumerate(nb.cells):
         if cell.cell_type != "code":
             continue
-        code = "\n".join(
-            "" if line.lstrip().startswith(("!", "%")) else line
-            for line in cell.source.splitlines()
-        )
         try:
-            ast.parse(code)
+            ast.parse(_strip_shell_lines(cell.source))
         except SyntaxError as e:
             pytest.fail(f"cell {i} failed to parse: {e}")
 
